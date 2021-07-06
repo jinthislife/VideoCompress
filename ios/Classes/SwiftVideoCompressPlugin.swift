@@ -7,6 +7,7 @@ public class SwiftVideoCompressPlugin: NSObject, FlutterPlugin {
     private var stopCommand = false
     private let channel: FlutterMethodChannel
     private let avController = AvController()
+    private var timer: Timer?
     
     init(channel: FlutterMethodChannel) {
         self.channel = channel
@@ -193,7 +194,11 @@ public class SwiftVideoCompressPlugin: NSObject, FlutterPlugin {
         
         let session = getComposition(isIncludeAudio, timeRange, sourceVideoTrack!)
         
-        let exporter = AVAssetExportSession(asset: session, presetName: getExportPreset(quality))!
+        exporter = AVAssetExportSession(asset: session, presetName: getExportPreset(quality))
+        guard let exporter = exporter else {
+            print("Failed initializing export session")
+            return
+        }
         
         exporter.outputURL = compressionUrl
         exporter.outputFileType = AVFileType.mp4
@@ -211,20 +216,21 @@ public class SwiftVideoCompressPlugin: NSObject, FlutterPlugin {
         
         Utility.deleteFile(compressionUrl.absoluteString)
         
-        let timer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.updateProgress),
+        if timer != nil {
+            timer?.invalidate()
+        }
+        timer = Timer.scheduledTimer(timeInterval: 0.1, target: self, selector: #selector(self.updateProgress),
                                          userInfo: exporter, repeats: true)
         
-        exporter.exportAsynchronously(completionHandler: {
+        exporter.exportAsynchronously(completionHandler: { [weak self] in
+            guard let self = self else { return }
+            self.timer?.invalidate()
+            
             if(self.stopCommand) {
-                timer.invalidate()
                 self.stopCommand = false
-                var json = self.getMediaInfoJson(path)
-                json["isCancel"] = true
-                let jsonString = Utility.keyValueToJson(json)
-                return result(jsonString)
+                return
             }
             if deleteOrigin {
-                timer.invalidate()
                 let fileManager = FileManager.default
                 do {
                     if fileManager.fileExists(atPath: path) {
@@ -245,8 +251,9 @@ public class SwiftVideoCompressPlugin: NSObject, FlutterPlugin {
     }
     
     private func cancelCompression(_ result: FlutterResult) {
-        exporter?.cancelExport()
         stopCommand = true
+        exporter?.cancelExport()
+        timer?.invalidate()
         result("")
     }
     

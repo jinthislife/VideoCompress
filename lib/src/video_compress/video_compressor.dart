@@ -164,6 +164,8 @@ extension Compress on IVideoCompress {
   /// If there is no compression process, nothing will happen.
   Future<void> cancelCompression() async {
     await _invoke<void>('cancelCompression');
+    // ignore: invalid_use_of_protected_member
+    setProcessingStatus(false);
   }
 
   /// delete the cache folder, please do not put other things
